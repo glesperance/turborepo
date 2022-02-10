@@ -1,4 +1,5 @@
 import execa from "execa";
+import fs from "fs";
 import * as uvu from "uvu";
 import * as assert from "uvu/assert";
 import { Monorepo } from "../monorepo";
@@ -23,9 +24,43 @@ const basicPipeline = {
 // This is injected by github actions
 process.env.TURBO_TOKEN = "";
 
-let suites = [];
-for (let npmClient of ["yarn", "berry", "pnpm", "npm"] as const) {
-  const Suite = uvu.suite(`${npmClient}`);
+// See https://github.com/benchmark-action/github-action-benchmark#examples
+type Benchmark = {
+  name: string;
+  unit: string;
+  value: number;
+  range?: string;
+  extra?: string;
+};
+
+class Benchmarker {
+  readonly benchmarks: Benchmark[] = [];
+
+  record<T>(cb: uvu.Callback<T>): uvu.Callback<T> {
+    return async (ctx) => {
+      const start = new Date();
+      await cb(ctx);
+      const end = new Date();
+      this.benchmarks.push({
+        name: `${ctx.__suite__} - ${ctx.__test__}`,
+        value: end.getTime() - start.getTime(),
+        unit: "ms",
+      });
+    };
+  }
+
+  writeResults(filename: string) {
+    fs.writeFileSync(filename, JSON.stringify(this.benchmarks, null, 2));
+  }
+}
+
+const benchmarker = new Benchmarker();
+const NPM_CLIENTS = ["yarn", "berry", "pnpm", "npm"] as const;
+
+const suites: uvu.Test[] = [];
+for (const npmClient of NPM_CLIENTS) {
+  const suite = uvu.suite(`${npmClient}`);
+
   const repo = new Monorepo("basics");
   repo.init(npmClient, basicPipeline);
   repo.install();
@@ -33,7 +68,9 @@ for (let npmClient of ["yarn", "berry", "pnpm", "npm"] as const) {
   repo.addPackage("b");
   repo.addPackage("c");
   repo.linkPackages();
-  runSmokeTests(Suite, repo, npmClient);
+  runSmokeTests(suite, benchmarker, repo, npmClient);
+
+  // test that turbo can run from a subdirectory
   const sub = new Monorepo("in-subdirectory");
   sub.init(npmClient, basicPipeline, "js");
   sub.install();
@@ -41,19 +78,35 @@ for (let npmClient of ["yarn", "berry", "pnpm", "npm"] as const) {
   sub.addPackage("b");
   sub.addPackage("c");
   sub.linkPackages();
-  runSmokeTests(Suite, sub, npmClient, {
+  runSmokeTests(suite, benchmarker, sub, npmClient, {
     cwd: path.join(sub.root, sub.subdir),
   });
-  suites.push(Suite);
-  // test that turbo can run from a subdirectory
+
+  suites.push(suite);
 }
 
-for (let s of suites) {
-  s.run();
+// Hack to get a promise the resolves when the test run is complete.
+const run = Promise.all(
+  suites.map((s) => {
+    return new Promise((resolve) => {
+      s.after(resolve);
+      s.run();
+    });
+  })
+);
+
+const argc = process.argv.length;
+if (process.argv[argc - 2] == "--output") {
+  run.then(() => {
+    const outputFilename = process.argv[argc - 1];
+    benchmarker.writeResults(outputFilename);
+    console.log(`Benchmarks written to ${outputFilename}`);
+  });
 }
 
 function runSmokeTests<T>(
   suite: uvu.Test<T>,
+  benchmarker: Benchmarker,
   repo: Monorepo,
   npmClient: "yarn" | "berry" | "pnpm" | "npm",
   options: execa.SyncOptions<string> = {}
@@ -62,11 +115,12 @@ function runSmokeTests<T>(
     repo.cleanup();
   });
 
+  const relativePath = options.cwd
+    ? " from <root>/" + path.relative(repo.root, options.cwd)
+    : " from <root>";
   suite(
-    `${npmClient} runs tests and logs ${
-      options.cwd ? " from " + options.cwd : ""
-    } `,
-    async () => {
+    `${npmClient} runs tests and logs${relativePath}`,
+    benchmarker.record(async () => {
       const results = repo.turbo("run", ["test", "--stream"], options);
       assert.equal(0, results.exitCode, "exit code should be 0");
       const commandOutput = getCommandOutputAsArray(results);
@@ -81,14 +135,12 @@ function runSmokeTests<T>(
         text = repo.readFileSync(cachedLogFilePath);
       }, `Could not read cached log file from cache ${cachedLogFilePath}`);
       assert.ok(text.includes("testing c"), "Contains correct output");
-    }
+    })
   );
 
   suite(
-    `${npmClient} handles filesystem changes ${
-      options.cwd ? " from " + options.cwd : ""
-    } `,
-    async () => {
+    `${npmClient} handles filesystem changes${relativePath}`,
+    benchmarker.record(async () => {
       repo.newBranch("my-feature-branch");
       repo.commitFiles({
         [path.join("packages", "a", "test.js")]: `console.log('testingz a');`,
@@ -189,17 +241,15 @@ function runSmokeTests<T>(
         ) >= 0,
         "After running, changing source of b, and running `turbo run test` again, should print `c:test: cache hit, replaying output` since c should not be impacted by changes to b"
       );
-    }
+    })
   );
 
   if (npmClient === "yarn") {
     // Test `turbo prune --scope=a`
     // @todo refactor with other package managers
     suite(
-      `${npmClient} + turbo prune ${
-        options.cwd ? " from " + options.cwd : ""
-      } `,
-      async () => {
+      `${npmClient} + turbo prune${relativePath}`,
+      benchmarker.record(async () => {
         const pruneCommandOutput = getCommandOutputAsArray(
           repo.turbo("prune", ["--scope=a"], options)
         );
@@ -241,7 +291,7 @@ function runSmokeTests<T>(
           0,
           "Expected yarn install --frozen-lockfile to succeed"
         );
-      }
+      })
     );
   }
 }
