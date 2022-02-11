@@ -48,6 +48,31 @@ jobs:
       - name: Benchmark and Smoke Tests
         run: cd cli && make bench/turbo
 
+      - name: Benchmark E2E
+        run: cd cli && make bench/e2e
+
+      # Download previous benchmark result from cache (if exists)
+      - name: Download previous benchmark data
+        uses: actions/cache@v1
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-benchmark
+
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          # What benchmark tool the output.txt came from
+          tool: "customSmallerIsBetter"
+          # Where the output from the benchmark tool is stored
+          output-file-path: output.txt
+          # Where the previous data file is stored
+          external-data-json-path: ./cache/benchmark-data.json
+          skip-fetch-gh-pages: true
+          comment-always: true
+          # GitHub API token to make a commit comment
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
   build-win:
     name: build and test
     timeout-minutes: 10
