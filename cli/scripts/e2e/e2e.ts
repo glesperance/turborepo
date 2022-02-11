@@ -99,8 +99,9 @@ const argc = process.argv.length;
 if (process.argv[argc - 2] == "--output") {
   run.then(() => {
     const outputFilename = process.argv[argc - 1];
+    const resolved = path.resolve(path.join(process.cwd(), outputFilename));
     benchmarker.writeResults(outputFilename);
-    console.log(`Benchmarks written to ${outputFilename}`);
+    console.log(`Benchmarks written to ${resolved}`);
   });
 }
 
