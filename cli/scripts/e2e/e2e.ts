@@ -120,7 +120,7 @@ function runSmokeTests<T>(
     ? " from <root>/" + path.relative(repo.root, options.cwd)
     : " from <root>";
   suite(
-    `${npmClient} runs tests and logs${relativePath}`,
+    `runs tests and logs${relativePath}`,
     benchmarker.record(async () => {
       const results = repo.turbo("run", ["test", "--stream"], options);
       assert.equal(0, results.exitCode, "exit code should be 0");
@@ -140,7 +140,7 @@ function runSmokeTests<T>(
   );
 
   suite(
-    `${npmClient} handles filesystem changes${relativePath}`,
+    `handles filesystem changes${relativePath}`,
     benchmarker.record(async () => {
       repo.newBranch("my-feature-branch");
       repo.commitFiles({
@@ -249,7 +249,7 @@ function runSmokeTests<T>(
     // Test `turbo prune --scope=a`
     // @todo refactor with other package managers
     suite(
-      `${npmClient} + turbo prune${relativePath}`,
+      `turbo prune${relativePath}`,
       benchmarker.record(async () => {
         const pruneCommandOutput = getCommandOutputAsArray(
           repo.turbo("prune", ["--scope=a"], options)
