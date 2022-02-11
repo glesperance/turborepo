@@ -65,7 +65,7 @@ jobs:
           # What benchmark tool the output.txt came from
           tool: "customSmallerIsBetter"
           # Where the output from the benchmark tool is stored
-          output-file-path: ./cli/scripts/benchmark.json
+          output-file-path: ./cli/scripts/benchmarks.json
           # Where the previous data file is stored
           external-data-json-path: ./cache/benchmark-data.json
           skip-fetch-gh-pages: true
