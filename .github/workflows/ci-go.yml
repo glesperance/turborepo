@@ -68,6 +68,8 @@ jobs:
           output-file-path: ./cli/scripts/benchmarks.json
           # Where the previous data file is stored
           external-data-json-path: ./cache/benchmark-data.json
+          # Only update the cache on a push to main
+          save-data-file: ${{ github.event_name == 'push' }}
           skip-fetch-gh-pages: true
           comment-on-alert: true
           comment-always: true
