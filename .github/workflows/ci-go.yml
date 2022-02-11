@@ -69,6 +69,7 @@ jobs:
           # Where the previous data file is stored
           external-data-json-path: ./cache/benchmark-data.json
           skip-fetch-gh-pages: true
+          comment-on-alert: true
           comment-always: true
           # GitHub API token to make a commit comment
           github-token: ${{ secrets.GITHUB_TOKEN }}
